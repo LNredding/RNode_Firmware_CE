@@ -525,6 +525,7 @@ private:
   void readBuffer(uint8_t* buffer, size_t size);
   void loraMode();
   void rxAntEnable();
+  void txAntEnable();
   void setPacketParams(uint32_t preamble, uint8_t headermode, uint8_t length, uint8_t crc);
   void setModulationParams(uint8_t sf, uint8_t bw, uint8_t cr, int ldro);
   void setSyncWord(uint16_t sw);

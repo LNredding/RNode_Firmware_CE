@@ -362,13 +362,23 @@ uint8_t boot_vector = 0x00;
 		void led_id_on()  { }
 		void led_id_off() { }
 	#endif
+#elif MCU_VARIANT == MCU_STM32WLE5
+  // Seeed LoRa-E5 Mini - single LED on PB5 (pin 19), shared RX/TX
+  void led_rx_on()  { digitalWrite(pin_led_rx, HIGH); }
+  void led_rx_off() { digitalWrite(pin_led_rx, LOW); }
+  void led_tx_on()  { digitalWrite(pin_led_tx, HIGH); }
+  void led_tx_off() { digitalWrite(pin_led_tx, LOW); }
+  void led_id_on()  { }
+  void led_id_off() { }
 #endif
 
 void hard_reset(void) {
 	#if MCU_VARIANT == MCU_ESP32
 		ESP.restart();
 	#elif MCU_VARIANT == MCU_NRF52
-    NVIC_SystemReset();
+		NVIC_SystemReset();
+	#elif MCU_VARIANT == MCU_STM32WLE5
+		NVIC_SystemReset(); // ARM Cortex-M system reset
 	#endif
 }
 
@@ -456,7 +466,7 @@ void led_indicate_warning(int cycles) {
 }
 
 // LED Indication: Info
-#if MCU_VARIANT == MCU_ESP32 || MCU_VARIANT == MCU_NRF52
+#if MCU_VARIANT == MCU_ESP32 || MCU_VARIANT == MCU_NRF52 || MCU_VARIANT == MCU_STM32WLE5
 	#if HAS_NP == true
 		void led_indicate_info(int cycles) {
 			bool forever = (cycles == 0) ? true : false;
@@ -567,6 +577,17 @@ unsigned long led_standby_ticks = 0;
 		unsigned long led_notready_ticks = 0;
 		unsigned long led_standby_wait = 1768;
 		unsigned long led_notready_wait = 150;
+#elif MCU_VARIANT == MCU_STM32WLE5
+	// Seeed LoRa-E5 Mini - single GPIO LED, no PWM fading
+	uint8_t led_standby_min = 0;
+	uint8_t led_standby_max = 255;
+	uint8_t led_notready_min = 0;
+	uint8_t led_notready_max = 255;
+	uint8_t led_notready_value = 0;
+	int8_t  led_notready_direction = 0;
+	unsigned long led_notready_ticks = 0;
+	unsigned long led_standby_wait = 1768;
+	unsigned long led_notready_wait = 150;
 #endif
 
 unsigned long led_standby_value = led_standby_min;
@@ -1061,6 +1082,8 @@ void kiss_indicate_fbstate() {
 	serial_write(FEND);
 }
 
+#if MCU_VARIANT == MCU_ESP32 || MCU_VARIANT == MCU_NRF52
+	// Firmware hash verification - not yet implemented for STM32WLE5
 	void kiss_indicate_device_hash() {
 	  serial_write(FEND);
 	  serial_write(CMD_DEV_HASH);
@@ -1114,6 +1137,7 @@ void kiss_indicate_fbstate() {
 	  }
 	  serial_write(FEND);
 	}
+#endif // MCU_VARIANT == MCU_ESP32 || MCU_VARIANT == MCU_NRF52
 
 void kiss_indicate_fb() {
 	serial_write(FEND);
@@ -1398,6 +1422,8 @@ bool eeprom_info_locked() {
     uint8_t lock_byte = EEPROM.read(eeprom_addr(ADDR_INFO_LOCK));
   #elif MCU_VARIANT == MCU_NRF52
     uint8_t lock_byte = eeprom_read(eeprom_addr(ADDR_INFO_LOCK));
+  #elif MCU_VARIANT == MCU_STM32WLE5
+    uint8_t lock_byte = 0x00; // no EEPROM - treat as unlocked
   #endif
 	if (lock_byte == INFO_LOCK_BYTE) {
 		return true;
@@ -1412,6 +1438,8 @@ void eeprom_dump_info() {
             uint8_t byte = EEPROM.read(eeprom_addr(addr));
         #elif MCU_VARIANT == MCU_NRF52
             uint8_t byte = eeprom_read(eeprom_addr(addr));
+        #elif MCU_VARIANT == MCU_STM32WLE5
+            uint8_t byte = 0xFF; // no EEPROM stub
         #endif
 		escaped_serial_write(byte);
 	}
@@ -1423,6 +1451,8 @@ void eeprom_dump_config() {
             uint8_t byte = EEPROM.read(eeprom_addr(addr));
         #elif MCU_VARIANT == MCU_NRF52
             uint8_t byte = eeprom_read(eeprom_addr(addr));
+        #elif MCU_VARIANT == MCU_STM32WLE5
+            uint8_t byte = 0xFF; // no EEPROM stub
         #endif
 		escaped_serial_write(byte);
 	}
@@ -1434,6 +1464,8 @@ void eeprom_dump_all() {
             uint8_t byte = EEPROM.read(eeprom_addr(addr));
         #elif MCU_VARIANT == MCU_NRF52
             uint8_t byte = eeprom_read(eeprom_addr(addr));
+        #elif MCU_VARIANT == MCU_STM32WLE5
+            uint8_t byte = 0xFF; // no EEPROM stub
         #endif
 		escaped_serial_write(byte);
 	}
@@ -1500,6 +1532,8 @@ bool eeprom_lock_set() {
 	    if (EEPROM.read(eeprom_addr(ADDR_INFO_LOCK)) == INFO_LOCK_BYTE) {
     #elif MCU_VARIANT == MCU_NRF52
         if (eeprom_read(eeprom_addr(ADDR_INFO_LOCK)) == INFO_LOCK_BYTE) {
+    #elif MCU_VARIANT == MCU_STM32WLE5
+        if (false) { // no EEPROM stub
     #endif
 		return true;
 	} else {
@@ -1512,6 +1546,8 @@ bool eeprom_product_valid() {
     uint8_t rval = EEPROM.read(eeprom_addr(ADDR_PRODUCT));
   #elif MCU_VARIANT == MCU_NRF52
     uint8_t rval = eeprom_read(eeprom_addr(ADDR_PRODUCT));
+  #elif MCU_VARIANT == MCU_STM32WLE5
+    uint8_t rval = 0xFF; // no EEPROM stub
   #endif
 
 	#if PLATFORM == PLATFORM_ESP32
@@ -1532,6 +1568,8 @@ bool eeprom_model_valid() {
         model = EEPROM.read(eeprom_addr(ADDR_MODEL));
     #elif MCU_VARIANT == MCU_NRF52
         model = eeprom_read(eeprom_addr(ADDR_MODEL));
+    #elif MCU_VARIANT == MCU_STM32WLE5
+        model = 0xFF; // no EEPROM stub
     #endif
 	#if BOARD_MODEL == BOARD_RNODE
 	if (model == MODEL_A4 || model == MODEL_A9 || model == MODEL_FF || model == MODEL_FE) {
@@ -1593,6 +1631,8 @@ bool eeprom_hwrev_valid() {
         hwrev = EEPROM.read(eeprom_addr(ADDR_HW_REV));
     #elif MCU_VARIANT == MCU_NRF52
         hwrev = eeprom_read(eeprom_addr(ADDR_HW_REV));
+    #elif MCU_VARIANT == MCU_STM32WLE5
+        hwrev = 0xFF; // no EEPROM stub
     #endif
 	if (hwrev != 0x00 && hwrev != 0xFF) {
 		return true;
@@ -1608,6 +1648,8 @@ bool eeprom_checksum_valid() {
             char byte = EEPROM.read(eeprom_addr(i));
         #elif MCU_VARIANT == MCU_NRF52
             char byte = eeprom_read(eeprom_addr(i));
+        #elif MCU_VARIANT == MCU_STM32WLE5
+            char byte = 0xFF; // no EEPROM stub
         #endif
 		data[i] = byte;
 	}
@@ -1619,6 +1661,8 @@ bool eeprom_checksum_valid() {
             uint8_t stored_chk_byte = EEPROM.read(eeprom_addr(ADDR_CHKSUM+i));
         #elif MCU_VARIANT == MCU_NRF52
             uint8_t stored_chk_byte = eeprom_read(eeprom_addr(ADDR_CHKSUM+i));
+        #elif MCU_VARIANT == MCU_STM32WLE5
+            uint8_t stored_chk_byte = 0xFF; // no EEPROM stub
         #endif
 		uint8_t calced_chk_byte = (uint8_t)hash[i];
 		if (stored_chk_byte != calced_chk_byte) {
@@ -1694,6 +1738,8 @@ bool eeprom_have_conf() {
 	    if (EEPROM.read(eeprom_addr(ADDR_CONF_OK)) == CONF_OK_BYTE) {
     #elif MCU_VARIANT == MCU_NRF52
         if (eeprom_read(eeprom_addr(ADDR_CONF_OK)) == CONF_OK_BYTE) {
+    #elif MCU_VARIANT == MCU_STM32WLE5
+        if (false) { // no EEPROM stub - config never saved
     #endif
 		return true;
 	} else {
@@ -1716,6 +1762,13 @@ void eeprom_conf_load(RadioInterface* radio) {
             uint8_t txp = eeprom_read(eeprom_addr(ADDR_CONF_TXP));
             uint32_t freq = (uint32_t)eeprom_read(eeprom_addr(ADDR_CONF_FREQ)+0x00) << 24 | (uint32_t)eeprom_read(eeprom_addr(ADDR_CONF_FREQ)+0x01) << 16 | (uint32_t)eeprom_read(eeprom_addr(ADDR_CONF_FREQ)+0x02) << 8 | (uint32_t)eeprom_read(eeprom_addr(ADDR_CONF_FREQ)+0x03);
             uint32_t bw = (uint32_t)eeprom_read(eeprom_addr(ADDR_CONF_BW)+0x00) << 24 | (uint32_t)eeprom_read(eeprom_addr(ADDR_CONF_BW)+0x01) << 16 | (uint32_t)eeprom_read(eeprom_addr(ADDR_CONF_BW)+0x02) << 8 | (uint32_t)eeprom_read(eeprom_addr(ADDR_CONF_BW)+0x03);
+        #elif MCU_VARIANT == MCU_STM32WLE5
+            // No EEPROM - use defaults until flash emulation is implemented
+            uint8_t sf = 0;
+            uint8_t cr = 0;
+            uint8_t txp = 0;
+            uint32_t freq = 0;
+            uint32_t bw = 0;
         #endif
             radio->setSpreadingFactor(sf);
             radio->setCodingRate4(cr);

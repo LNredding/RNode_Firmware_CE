@@ -123,6 +123,14 @@
   #define MODEL_16            0x16 // T-Echo 433 MHz
   #define MODEL_17            0x17 // T-Echo 868/915 MHz
 
+    // TODO: confirm all IDs with upstream before PR - placeholders
+  #define PRODUCT_E5_MINI     0x30  // Seeed LoRa-E5 Mini
+  #define BOARD_LORA_E5_MINI  0x46  // free in CE
+  #define MODEL_E5_868        0xF1  // Seeed LoRa-E5 Mini, 868 MHz
+  #define MODEL_E5_915        0xF2  // Seeed LoRa-E5 Mini, 915 MHz
+  #define PLATFORM_STM32      0x60  // placeholder
+  #define MCU_STM32WLE5       0x61  // placeholder
+
   #define PRODUCT_HMBRW       0xF0
   #define BOARD_HMBRW         0x32
   #define BOARD_HUZZAH32      0x34
@@ -141,6 +149,9 @@
   #if defined(ESP32)
     #define PLATFORM PLATFORM_ESP32
     #define MCU_VARIANT MCU_ESP32
+  #elif defined(STM32WLE5xx)
+    #define PLATFORM PLATFORM_STM32
+    #define MCU_VARIANT MCU_STM32WLE5
   #elif defined(NRF52840_XXAA) || defined(_VARIANT_PCA10056_)
     #include <variant.h>
     #define PLATFORM PLATFORM_NRF52
@@ -1108,6 +1119,57 @@
       #error An unsupported ESP32 board was selected. Cannot compile RNode firmware.
     #endif
   
+  #elif MCU_VARIANT == MCU_STM32WLE5
+    // Seeed LoRa-E5 Mini - STM32WLE5JC with integrated SX126x radio
+    // Radio is accessed via internal SubGHz peripheral, not external SPI
+    // RF switch: PA4=RXen (4), PA5=TXen (5) per Seeed E5 Mini schematic
+    // TCXO: 32MHz on PB0 (16) (VDD_TCXO)
+    // LED: PB5 (19) - single LED, shared for RX/TX indication
+    #define BOARD_MODEL BOARD_LORA_E5_MINI
+    #define HAS_EEPROM false
+    #define HAS_CONSOLE true
+    #define HAS_BLUETOOTH false
+    #define HAS_BLE false
+    #define HAS_TCXO true
+    #define HAS_INPUT false
+    #define HAS_SLEEP false
+    #define CONFIG_UART_BUFFER_SIZE 6144
+    #define CONFIG_QUEUE_0_SIZE 6144
+    #define CONFIG_QUEUE_MAX_LENGTH 200
+    #define EEPROM_SIZE 296
+    #define EEPROM_OFFSET EEPROM_SIZE-EEPROM_RESERVED
+    #define INTERFACE_COUNT 1
+
+    const int pin_led_rx = 19; // PB5
+    const int pin_led_tx = 19; // PB5
+
+    // STM32WLE5 internal SubGHz radio - no external SPI pins
+    // All SPI-related pins are -1, RF switch uses PA4/PA5
+    const uint8_t interfaces[INTERFACE_COUNT] = {SX1262};
+    const bool interface_cfg[INTERFACE_COUNT][3] = {
+        // SX1262 - internal to STM32WLE5, accessed via SubGHz peripheral
+        {
+            false, // DEFAULT_SPI - internal radio, not SPI
+            true,  // HAS_TCXO - 32MHz TCXO on PB0
+            false  // DIO2_AS_RF_SWITCH - uses PA4/PA5 instead
+        }
+    };
+    const int8_t interface_pins[INTERFACE_COUNT][10] = {
+        // SX1262 internal radio - no SPI pins
+        {
+            -1, // pin_ss - no CS, internal radio
+            -1, // pin_sclk - internal radio
+            -1, // pin_mosi - internal radio
+            -1, // pin_miso - internal radio
+            -1, // pin_busy - internal radio
+            -1, // pin_dio - internal radio
+            -1, // pin_reset - internal radio
+             5, // pin_txen - PA5
+             4, // pin_rxen - PA4
+            16  // pin_tcxo_enable - PB0
+        }
+    };
+
   #elif MCU_VARIANT == MCU_NRF52
     #define CONFIG_UART_BUFFER_SIZE 6144
     #define CONFIG_QUEUE_0_SIZE 6144

@@ -16,6 +16,11 @@
   #define ISR_VECT
 #endif
 
+#if MCU_VARIANT == MCU_STM32WLE5
+  #include "stm32wlxx_hal_subghz.h"
+  SUBGHZ_HandleTypeDef hsubghz;
+#endif
+
 // SX126x registers
 #define OP_RF_FREQ_6X               0x86
 #define OP_SLEEP_6X                 0x84
@@ -147,12 +152,22 @@ bool sx126x::preInit() {
 
 uint8_t ISR_VECT sx126x::readRegister(uint16_t address)
 {
-  return singleTransfer(OP_READ_REGISTER_6X, address, 0x00);
+  #if MCU_VARIANT == MCU_STM32WLE5
+    uint8_t value = 0;
+    HAL_SUBGHZ_ReadRegister(&hsubghz, address, &value);
+    return value; 
+  #else
+    return singleTransfer(OP_READ_REGISTER_6X, address, 0x00);
+  #endif
 }
 
 void sx126x::writeRegister(uint16_t address, uint8_t value)
 {
-    singleTransfer(OP_WRITE_REGISTER_6X, address, value);
+    #if MCU_VARIANT == MCU_STM32WLE5
+      HAL_SUBGHZ_WriteRegister(&hsubghz, address, value);
+    #else
+      singleTransfer(OP_WRITE_REGISTER_6X, address, value);
+    #endif
 }
 
 uint8_t ISR_VECT sx126x::singleTransfer(uint8_t opcode, uint16_t address, uint8_t value)
@@ -180,9 +195,22 @@ uint8_t ISR_VECT sx126x::singleTransfer(uint8_t opcode, uint16_t address, uint8_
 
 void sx126x::rxAntEnable()
 {
+  #if MCU_VARIANT == MCU_STM32WLE5
+    digitalWrite(interface_pins[_index][8], HIGH);
+    digitalWrite(interface_pins[_index][7], LOW);
+  #else
   if (_rxen != -1) {
     digitalWrite(_rxen, HIGH);
   }
+  #endif
+}
+
+void sx126x::txAntEnable()
+{
+  #if MCU_VARIANT == MCU_STM32WLE5
+    digitalWrite(interface_pins[_index][7], HIGH);
+    digitalWrite(interface_pins[_index][8], LOW);
+  #endif
 }
 
 void sx126x::loraMode() {
@@ -192,36 +220,49 @@ void sx126x::loraMode() {
 }
 
 void sx126x::waitOnBusy() {
-    unsigned long time = millis();
-    if (_busy != -1) {
-        while (digitalRead(_busy) == HIGH)
-        {
-            if (millis() >= (time + 100)) { break; }
-        }
-    }
+    // Not neccessary on stm32 due to HAL handling this for us
+    #if MCU_VARIANT == MCU_STM32WLE5
+      return;
+    #else
+      unsigned long time = millis();
+      if (_busy != -1) {
+          while (digitalRead(_busy) == HIGH)
+          {
+              if (millis() >= (time + 100)) { break; }
+          }
+      }
+    #endif
 }
 
 void sx126x::executeOpcode(uint8_t opcode, uint8_t *buffer, uint8_t size)
 {
-    waitOnBusy();
+    #if MCU_VARIANT == MCU_STM32WLE5
+      HAL_SUBGHZ_ExecSetCmd(&hsubghz,(SUBGHZ_RadioSetCmd_t)opcode, buffer, size);
+    
+    #else
+      waitOnBusy();
 
-    digitalWrite(_ss, LOW);
+      digitalWrite(_ss, LOW);
 
-    _spiModem->beginTransaction(_spiSettings);
-    _spiModem->transfer(opcode);
+      _spiModem->beginTransaction(_spiSettings);
+      _spiModem->transfer(opcode);
 
-    for (int i = 0; i < size; i++)
-    {
-        _spiModem->transfer(buffer[i]);
-    }
+      for (int i = 0; i < size; i++)
+      {
+          _spiModem->transfer(buffer[i]);
+      }
 
-    _spiModem->endTransaction();
+      _spiModem->endTransaction();
 
-    digitalWrite(_ss, HIGH);
+      digitalWrite(_ss, HIGH);
+    #endif
 }
 
 void sx126x::executeOpcodeRead(uint8_t opcode, uint8_t *buffer, uint8_t size)
 {
+  #if MCU_VARIANT == MCU_STM32WLE5
+    HAL_SUBGHZ_ExecGetCmd(&hsubghz, (SUBGHZ_RadioGetCmd_t)opcode, buffer, size);   
+  #else
     waitOnBusy();
 
     digitalWrite(_ss, LOW);
@@ -238,41 +279,51 @@ void sx126x::executeOpcodeRead(uint8_t opcode, uint8_t *buffer, uint8_t size)
     _spiModem->endTransaction();
 
     digitalWrite(_ss, HIGH);
+  #endif
 }
 
 void sx126x::writeBuffer(const uint8_t* buffer, size_t size)
 {
-    waitOnBusy();
+    #if MCU_VARIANT == MCU_STM32WLE5
+      HAL_SUBGHZ_WriteBuffer(&hsubghz, _fifo_tx_addr_ptr, (uint8_t*)buffer, size);
+      _fifo_tx_addr_ptr += size;
+    #else
+      waitOnBusy();
 
-    digitalWrite(_ss, LOW);
+      digitalWrite(_ss, LOW);
 
-    _spiModem->beginTransaction(_spiSettings);
-    _spiModem->transfer(OP_FIFO_WRITE_6X);
-    _spiModem->transfer(_fifo_tx_addr_ptr);
+      _spiModem->beginTransaction(_spiSettings);
+      _spiModem->transfer(OP_FIFO_WRITE_6X);
+      _spiModem->transfer(_fifo_tx_addr_ptr);
 
-    for (int i = 0; i < size; i++) {_spiModem->transfer(buffer[i]); _fifo_tx_addr_ptr++;}
+      for (int i = 0; i < size; i++) {_spiModem->transfer(buffer[i]); _fifo_tx_addr_ptr++;}
 
-    _spiModem->endTransaction();
+      _spiModem->endTransaction();
 
-    digitalWrite(_ss, HIGH);
+      digitalWrite(_ss, HIGH);
+    #endif
 }
 
 void sx126x::readBuffer(uint8_t* buffer, size_t size)
 {
-    waitOnBusy();
+    #if MCU_VARIANT == MCU_STM32WLE5
+      HAL_SUBGHZ_ReadBuffer(&hsubghz, _fifo_rx_addr_ptr, buffer, size);
+    #else
+      waitOnBusy();
 
-    digitalWrite(_ss, LOW);
+      digitalWrite(_ss, LOW);
 
-    _spiModem->beginTransaction(_spiSettings);
-    _spiModem->transfer(OP_FIFO_READ_6X);
-    _spiModem->transfer(_fifo_rx_addr_ptr);
-    _spiModem->transfer(0x00);
+      _spiModem->beginTransaction(_spiSettings);
+      _spiModem->transfer(OP_FIFO_READ_6X);
+      _spiModem->transfer(_fifo_rx_addr_ptr);
+      _spiModem->transfer(0x00);
 
-    for (int i = 0; i < size; i++) {buffer[i] = _spiModem->transfer(0x00);}
+      for (int i = 0; i < size; i++) {buffer[i] = _spiModem->transfer(0x00);}
 
-    _spiModem->endTransaction();
+      _spiModem->endTransaction();
 
-    digitalWrite(_ss, HIGH);
+      digitalWrite(_ss, HIGH);
+    #endif
 }
 
 void sx126x::setModulationParams(uint8_t sf, uint8_t bw, uint8_t cr, int ldro) {
@@ -315,6 +366,13 @@ void sx126x::setPacketParams(uint32_t preamble, uint8_t headermode, uint8_t leng
 }
 
 void sx126x::reset(void) {
+  #if MCU_VARIANT == MCU_STM32WLE5
+    // Built in radio does not have a gpio pin reset. Radio is built in
+    SET_BIT(RCC->CSR, RCC_CSR_RFRST);
+    HAL_Delay(10);
+    CLEAR_BIT(RCC->CSR, RCC_CSR_RFRST);
+    HAL_Delay(20);
+  #else
   if (_reset != -1) {
     pinMode(_reset, OUTPUT);
 
@@ -324,6 +382,7 @@ void sx126x::reset(void) {
     digitalWrite(_reset, HIGH);
     delay(10);
   }
+  #endif
 }
 
 void sx126x::calibrate(void) {

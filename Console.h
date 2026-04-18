@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#if defined(ESP32)
 #include <FS.h>
 #include <SPIFFS.h>
 #include <WiFi.h>
@@ -201,3 +202,4 @@ void console_loop(){
     // other tasks to run.
     delay(2);
 }
+#endif // ESP32

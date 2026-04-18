@@ -97,7 +97,9 @@ typedef struct {
       uint8_t interface;
       uint8_t data[];
 } modem_packet_t;
+#if MCU_VARIANT == MCU_ESP32 || MCU_VARIANT == MCU_NRF52
 static xQueueHandle modem_packet_queue = NULL;
+#endif
 
 char sbuf[128];
 
@@ -216,7 +218,9 @@ void setup() {
 
   setup_interfaces();
 
+  #if MCU_VARIANT == MCU_ESP32 || MCU_VARIANT == MCU_NRF52
   modem_packet_queue = xQueueCreate(MODEM_QUEUE_SIZE, sizeof(modem_packet_t*));
+  #endif
 
   for (int i = 0; i < INTERFACE_COUNT; i++) {
       fifo16_init(&packet_starts[i], packet_starts_buf, CONFIG_QUEUE_MAX_LENGTH);
@@ -338,7 +342,11 @@ void setup() {
               } else if (lfr == M_FRQ_R) {
                 // Quick reboot
                 #if HAS_CONSOLE
+                  #if MCU_VARIANT == MCU_ESP32
                   if (rtc_get_reset_reason(0) == POWERON_RESET) {
+                  #else
+                  if (true) {
+                  #endif
                     console_active = true;
                   }
                 #endif
@@ -393,7 +401,7 @@ void setup() {
     #endif
 
     if (console_active) {
-      #if HAS_CONSOLE
+      #if HAS_CONSOLE && defined(ESP32)
         console_start();
       #else
         kiss_indicate_reset();
@@ -499,7 +507,11 @@ inline bool queue_packet(RadioInterface* radio, uint8_t index) {
     // unable to receive the packet.
     modem_packet->len = read_len[index];
     memcpy(modem_packet->data, pbuf, read_len[index]);
+    #if MCU_VARIANT == MCU_ESP32 || MCU_VARIANT == MCU_NRF52
     if (!modem_packet_queue || xQueueSendFromISR(modem_packet_queue, &modem_packet, NULL) != pdPASS) {
+    #else
+    if (false) { // STM32 - TODO: implement packet queue
+    #endif
         free(modem_packet);
         return false;
     }
@@ -510,7 +522,9 @@ void ISR_VECT receive_callback(uint8_t index, int packet_size) {
     selected_radio = interface_obj[index];
     bool    ready    = false;
 
+  #if MCU_VARIANT == MCU_NRF52
   BaseType_t int_mask;
+  #endif
   if (!promisc) {
     // The standard operating mode allows large
     // packets with a payload up to 500 bytes,
@@ -1177,7 +1191,9 @@ void serial_callback(uint8_t sbyte) {
       if (sbyte != 0x00) { kiss_indicate_disp(); }
     } else if (command == CMD_DEV_HASH) {
         if (sbyte != 0x00) {
+          #if MCU_VARIANT == MCU_ESP32 || MCU_VARIANT == MCU_NRF52
           kiss_indicate_device_hash();
+          #endif
         }
     } else if (command == CMD_DEV_SIG) {
         if (sbyte == FESC) {
@@ -1191,10 +1207,12 @@ void serial_callback(uint8_t sbyte) {
               if (frame_len < CMD_L) cmdbuf[frame_len++] = sbyte;
           }
 
+          #if MCU_VARIANT == MCU_ESP32 || MCU_VARIANT == MCU_NRF52
           if (frame_len == DEV_SIG_LEN) {
             memcpy(dev_sig, cmdbuf, DEV_SIG_LEN);
             device_save_signature();
           }
+          #endif
     } else if (command == CMD_FW_UPD) {
       if (sbyte == 0x01) {
         firmware_update_mode = true;
@@ -1202,6 +1220,7 @@ void serial_callback(uint8_t sbyte) {
         firmware_update_mode = false;
       }
     } else if (command == CMD_HASHES) {
+        #if MCU_VARIANT == MCU_ESP32 || MCU_VARIANT == MCU_NRF52
         if (sbyte == 0x01) {
           kiss_indicate_target_fw_hash();
         } else if (sbyte == 0x02) {
@@ -1211,6 +1230,7 @@ void serial_callback(uint8_t sbyte) {
         } else if (sbyte == 0x04) {
           kiss_indicate_partition_table_hash();
         }
+        #endif
     } else if (command == CMD_FW_HASH) {
         if (sbyte == FESC) {
               ESCAPE = true;
@@ -1223,10 +1243,12 @@ void serial_callback(uint8_t sbyte) {
               if (frame_len < CMD_L) cmdbuf[frame_len++] = sbyte;
           }
 
+          #if MCU_VARIANT == MCU_ESP32 || MCU_VARIANT == MCU_NRF52
           if (frame_len == DEV_HASH_LEN) {
             memcpy(dev_firmware_hash_target, cmdbuf, DEV_HASH_LEN);
             device_save_firmware_hash();
           }
+          #endif
     } else if (command == CMD_BT_CTRL) {
       #if HAS_BLUETOOTH || HAS_BLE
         if (sbyte == 0x00) {
@@ -1376,6 +1398,12 @@ void validate_status() {
       uint8_t F_POR = 0x00;
       uint8_t F_BOR = 0x00;
       uint8_t F_WDR = 0x01;
+  #elif MCU_VARIANT == MCU_STM32WLE5
+      // TODO: Get STM32WLE5 boot flags
+      uint8_t boot_flags = 0x02;
+      uint8_t F_POR = 0x00;
+      uint8_t F_BOR = 0x00;
+      uint8_t F_WDR = 0x01;
   #endif
 
   if (hw_ready || device_init_done) {
@@ -1413,11 +1441,15 @@ void validate_status() {
         if (eeprom_checksum_valid()) {
           eeprom_ok = true;
           if (modems_installed) {
+            #if MCU_VARIANT == MCU_ESP32 || MCU_VARIANT == MCU_NRF52
             if (device_init()) {
               hw_ready = true;
             } else {
               hw_ready = false;
             }
+            #else
+            hw_ready = true; // STM32 - no device_init, assume ready
+            #endif
           } else {
             hw_ready = false;
             Serial.write("No radio module found\r\n");
@@ -1562,7 +1594,7 @@ void loop() {
   } else {
     if (hw_ready) {
       if (console_active) {
-        #if HAS_CONSOLE
+        #if HAS_CONSOLE && defined(ESP32)
           console_loop();
         #endif
       } else {
@@ -1696,7 +1728,9 @@ void button_event(uint8_t event, unsigned long duration) {
             bt_stop();
           #endif
           console_active = true;
+          #if defined(ESP32)
           console_start();
+          #endif
         #endif
       } else if (duration > 5000) {
         #if HAS_BLUETOOTH || HAS_BLE
