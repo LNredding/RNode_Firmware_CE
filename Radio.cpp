@@ -115,9 +115,15 @@ sx126x::sx126x(uint8_t index, SPIClass* spi, bool tcxo, bool dio2_as_rf_switch, 
 }
 
 bool sx126x::preInit() {
-  pinMode(_ss, OUTPUT);
-  digitalWrite(_ss, HIGH);
   
+  #if MCU_VARIANT == MCU_STM32WLE5
+    hsubghz.Init.BaudratePrescaler = SUBGHZSPI_BAUDRATEPRESCALER_4;
+    HAL_SUBGHZ_Init(&hsubghz);
+  #else
+    pinMode(_ss, OUTPUT);
+    digitalWrite(_ss, HIGH);
+  #endif
+
   // todo: check if this change causes issues on any platforms
   #if MCU_VARIANT == MCU_ESP32
   if (_sclk != -1 && _miso != -1 && _mosi != -1 && _ss != -1) {
@@ -125,7 +131,7 @@ bool sx126x::preInit() {
   } else {
     _spiModem->begin();
   }
-  #else
+  #elif MCU_VARIANT != MCU_STM32WLE5
     _spiModem->begin();
   #endif
 
@@ -422,8 +428,13 @@ int sx126x::begin()
     }
   }
 
-  if (_rxen != -1) { pinMode(_rxen, OUTPUT); }
-
+  #if MCU_VARIANT != MCU_STM32WLE5
+    if (_rxen != -1) { pinMode(_rxen, OUTPUT); }
+  #else
+    pinMode(interface_pins[_index][7], OUTPUT); // pin_txen PA5
+    pinMode(interface_pins[_index][8], OUTPUT); // pin_rxen PA4
+  #endif
+  
   calibrate();
   calibrate_image(_frequency);
 
