@@ -19,6 +19,13 @@
 #if MCU_VARIANT == MCU_STM32WLE5
   #include "stm32wlxx_hal_subghz.h"
   SUBGHZ_HandleTypeDef hsubghz;
+  static sx126x* _stm32_radio_instance = nullptr;
+  extern "C" void SUBGHZ_Radio_IRQHandler(void){HAL_SUBGHZ_IRQHandler(&hsubghz);}
+  extern "C" void HAL_SUBGHZ_RxCpltCallback(SUBGHZ_HandleTypeDef *hsubghz){
+    if(_stm32_radio_instance){
+      _stm32_radio_instance->handleDio0Rise();
+    }
+  }
 #endif
 
 // SX126x registers
@@ -697,8 +704,9 @@ void sx126x::onReceive(void(*callback)(uint8_t, int))
   _onReceive = callback;
 
   if (callback) {
-    pinMode(_dio0, INPUT);
-
+    #if MCU_VARIANT != MCU_STM32WLE5
+      pinMode(_dio0, INPUT);
+    #endif
     // set preamble and header detection irqs, plus dio0 mask
     uint8_t buf[8];
 
@@ -720,11 +728,16 @@ void sx126x::onReceive(void(*callback)(uint8_t, int))
 
     executeOpcode(OP_SET_IRQ_FLAGS_6X, buf, 8);
 #ifdef SPI_HAS_NOTUSINGINTERRUPT
+    #if MCU_VARIANT != MCU_STM32WLE5
     _spiModem->usingInterrupt(digitalPinToInterrupt(_dio0));
+    #endif
 #endif
+    #if MCU_VARIANT == MCU_STM32WLE5
+      _stm32_radio_instance = this;
+      HAL_NVIC_SetPriority();
+    #endif
     // make function available
     extern void (*onIntRise[INTERFACE_COUNT])(void);
-
     attachInterrupt(digitalPinToInterrupt(_dio0), onIntRise[_index], RISING);
   } else {
     detachInterrupt(digitalPinToInterrupt(_dio0));
