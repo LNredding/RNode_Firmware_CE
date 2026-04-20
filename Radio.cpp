@@ -478,8 +478,9 @@ void sx126x::end()
   // put in sleep mode
   sleep();
 
-  // stop SPI
-  _spiModem->end();
+  #if MCU_VARIANT != MCU_STM32WLE5
+    _spiModem->end();
+  #endif
 
   _bitrate = 0;
 
@@ -508,6 +509,10 @@ int sx126x::beginPacket(int implicitHeader)
 int sx126x::endPacket()
 {
     setPacketParams(_preambleLength, _implicitHeaderMode, _payloadLength, _crcMode);
+
+    #if MCU_VARIANT == MCU_STM32WLE5
+      txAntEnable();
+    #endif
 
     // put in single TX mode
     uint8_t timeout[3] = {0};
@@ -538,6 +543,9 @@ int sx126x::endPacket()
     mask[0] = 0x00;
     mask[1] = IRQ_TX_DONE_MASK_6X;
     executeOpcode(OP_CLEAR_IRQ_STATUS_6X, mask, 2);
+    #if MCU_VARIANT == MCU_STM32WLE5
+      rxAntEnable();
+    #endif
     return !timed_out;
 }
 
@@ -737,7 +745,9 @@ void sx126x::receive(int size)
     } else {
         explicitHeaderMode();
     }
-
+    #if MCU_VARIANT == MCU_STM32WLE5
+      rxAntEnable();
+    #endif
     if (_rxen != -1) {
         rxAntEnable();
     }
@@ -783,6 +793,8 @@ void sx126x::enableTCXO() {
       uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};
     #elif BOARD_MODEL == BOARD_E22_ESP32
       uint8_t buf[4] = {MODE_TCXO_1_8V_6X, 0x00, 0x00, 0xFF};
+    #elif BOARD_MODEL == BOARD_LORA_E5_MINI
+      uint8_t buf[4] = {MODE_TCXO_3_3V_6X, 0x00, 0x00, 0xFF};
     #else
       uint8_t buf[4] = {0};
     #endif
