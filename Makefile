@@ -31,7 +31,7 @@ clean:
 	-rm -rf ./build
 	-rm -f ./Release/rnode_firmware*
 
-prep: prep-esp32 prep-nrf
+prep: prep-esp32 prep-nrf prep-stm32
 
 prep-index:
 	arduino-cli core update-index --config-file arduino-cli.yaml
@@ -59,6 +59,10 @@ prep-nrf:
 	arduino-cli lib install --git-url https://github.com/liamcottle/esp8266-oled-ssd1306#e16cee124fe26490cb14880c679321ad8ac89c95
 	pip install pyserial rns --upgrade --user --break-system-packages # This looks scary, but it's actually just telling pip to install packages as a user instead of trying to install them systemwide, which bypasses the "externally managed environment" error.
 	pip install adafruit-nrfutil --upgrade --user --break-system-packages # This looks scary, but it's actually just telling pip to install packages as a user instead of trying to install them systemwide, which bypasses the "externally managed environment" error.
+
+prep-stm32:
+	arduino-cli core install STMicroelectronics:stm32 --config-file arduino-cli.yaml
+	pip install pyserial rns --upgrade --user --break-system-packages # This looks scary, but it's actually just telling pip to install packages as a user instead of trying to install them systemwide, which bypasses the "externally managed environment" error.
 
 console-site:
 	make -C Console clean site
@@ -157,6 +161,9 @@ firmware-heltec_t114:
 
 firmware-heltec_t114_gps:
 	arduino-cli compile --log --fqbn Heltec_nRF52:Heltec_nRF52:HT-n5262 -e --build-property "build.partitions=no_ota" --build-property "upload.maximum_size=2097152" --build-property "compiler.cpp.extra_flags=\"-DBOARD_MODEL=0x3C\" \"-DBOARD_VARIANT=0xCB\""
+
+firmware-lora_e5_mini:
+	arduino-cli compile --fqbn STMicroelectronics:stm32:GenWL:pnum=GENERIC_WLE5JCIX $(VFLAG) -e --build-property "compiler.cpp.extra_flags=\"-DBOARD_MODEL=0x46\""
 
 upload-tbeam:
 	arduino-cli upload -p $(or $(port), /dev/ttyACM0) --fqbn esp32:esp32:t-beam
@@ -277,6 +284,9 @@ upload-techo:
 	arduino-cli upload -p /dev/ttyACM0 --fqbn adafruit:nrf52:pca10056
 	@sleep 6
 	rnodeconf /dev/ttyACM0 --firmware-hash $$(./partition_hashes from_device /dev/ttyACM0)
+
+upload-lora_e5_mini:
+	arduino-cli upload -p $(or $(port), /dev/ttyUSB0) --fqbn STMicroelectronics:stm32:GenWL:pnum=GENERIC_WLE5JCIX
 
 release:  console-site spiffs-image $(shell grep ^release- Makefile | cut -d: -f1)
 
@@ -528,3 +538,5 @@ release-heltec_t114:
 	cp build/Heltec_nRF52.Heltec_nRF52.HT-n5262/RNode_Firmware_CE.ino.hex build/rnode_firmware_heltec_t114.hex
 	adafruit-nrfutil dfu genpkg --dev-type 0x0052 --application build/rnode_firmware_heltec_t114.hex Release/rnode_firmware_heltec_t114.zip
 	rm -r build
+
+# TODO: Add release-lora_e5_mini once EEPROM emulation and firmware hash verification are implemented
